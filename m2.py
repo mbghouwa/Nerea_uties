@@ -35,7 +35,7 @@ with open(f"worker_files/f_{i+1:02d}.txt","w") as fs:
     fs.write("\n".join(supp))
     fs.write("\n")
 
-for w in range(1, num_workers):
+for w in range(1, num_workers + 1):
     log.info(timed_message(f"Just launched worker number {w:02d}"))
     os.system(f"python nv2.py {w:02d} &")
 
