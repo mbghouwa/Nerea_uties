@@ -11,7 +11,7 @@ l_files = os.popen("ls stations/*.csv").read().split("\n")[:-1]
 
 log.basicConfig(filename=f"logs/general_log", level=log.DEBUG)
 
-ind = np.arange(0,len(l_files), len(l_files) // num_workers)[:-1]
+ind = np.arange(0,len(l_files)+1, len(l_files) // num_workers)[:-1]
 s_e = np.concatenate((ind[:-1].reshape(-1,1), ind[1:].reshape(-1,1)), axis=1)
 
 log.info(timed_message("Parallel JSON Generation Init"))
