@@ -3,6 +3,7 @@ import pandas as pd
 from sys import argv
 from scipy.stats import linregress
 import os
+import warnings
 import json
 
 
@@ -61,7 +62,7 @@ def get_ratio(dataframe, variable_name, reference=None, year_end=2019, year_beg=
     return diff_dates, diff_dates.size / arr1.size
 
 
-def payout(x, trigger, exitp=8, SI=1000000):
+def payout(x, trigger, exitp=0., SI=1000000.):
     if trigger < exitp:
         return np.nan
     else:
@@ -69,13 +70,14 @@ def payout(x, trigger, exitp=8, SI=1000000):
         return min(SI, max(trigger - x, 0) * tick)
 
 
-bs, es = "06-01", "08-01"
+bs, es = "07-01", "09-01"
 qs = [5, 10, 15, 20]
 strikes = [20, 30, 40, 50, 60]
 probs = pd.read_csv("probability.csv")
 
 if __name__ == '__main__':
     filename = argv[1]
+    warnings.filterwarnings("ignore")
     try:
         df = pd.read_csv(filename)
         df["DAILY_RAIN"] = df["DAILY_RAIN"].replace("NIL", np.nan).astype(float)
@@ -83,8 +85,8 @@ if __name__ == '__main__':
         summary = df.iloc[0, :].to_dict()
         summary["DATE"] = str(summary["DATE"])
         summary["date_begin"], summary["date_end"] = df["DATE"].agg(["min", "max"])
-        if summary["date_begin"] >=  np.datetime64(("{}-"+bs).format(summary["date_begin"].dt.year)):
-            summary["date_begin"] =  np.datetime64("{}-01-01".format(summary["date_begin"].dt.year +1))
+        if summary["date_begin"] >=  np.datetime64(("{}-"+bs).format(summary["date_begin"].year)):
+            summary["date_begin"] =  np.datetime64("{}-01-01".format(summary["date_begin"].year +1))
             df = df[df["DATE"] >= summary["date_begin"]]
         summary["date_begin"] = str(summary["date_begin"])
         summary["date_end"] = str(summary["date_end"])
@@ -103,7 +105,7 @@ if __name__ == '__main__':
             summary["missing_dates"]["missing_{}".format(year)] = list(diff.astype(str))
         df_efficace = df_efficace[df_efficace["DATE"] >= np.datetime64("1980-01-01")]
         df_rp = df_efficace.copy()
-        df_rp = df_rp[df_rp["DATE"].dt.month.isin([6, 7])]
+        df_rp = df_rp[df_rp["DATE"].dt.month.isin([7, 8])]
         summary["rp_ratios"] = dict()
         summary["rp_missing_dates"] = dict()
         for year, name in zip([1980, 1999, 2009], ["1980", "10_years", "20_years"]):
@@ -121,35 +123,39 @@ if __name__ == '__main__':
         percentiles = np.percentile(data_index["DAILY_RAIN"], q=qs)
         percentiles_dictionary = dict(zip(["percentile_untrended_{:02d}".format(q) for q in qs], percentiles))
         summary.update(percentiles_dictionary)
-        prob_terciles = prob.loc[prob["Name"] == filename.loc[0,"Name"], ["tp_probb","tp_probn","tp_proba"]].to_numpy()[0]
+        prob_terciles = probs.loc[probs["Name"] == df.loc[0,"CITY"], ["tp_probb","tp_probn","tp_proba"]].to_numpy()[0]/100
         prob_terciles = prob_terciles/pd.qcut(data_index["DAILY_RAIN"], 3).value_counts().tolist()
         data_index['weight'] = pd.qcut(data_index['DAILY_RAIN'], 3, labels = prob_terciles).astype(float)
         for strike in strikes:
             data_index['payout_' + str(strike)] = data_index['DAILY_RAIN'].apply(lambda x: payout(x, strike))
-        BC_all = np.round((data_index['weight'].reshape(-1,1)*data_index.iloc[:, -4:]).sum(axis=0), decimals=0)
-        BC_20 = np.round((data_index['weight'].reshape(-1,1)[-20:]*data_index.iloc[-20:, -4:]).sum(axis=0), decimals=0)
-        BC_10 = np.round((data_index['weight'].reshape(-1,1)[-10:]*data_index.iloc[-10:, -4:]).sum(axis=0), decimals=0)
-        BC_5 = np.round((data_index['weight'].reshape(-1,1)[-5:]*data_index.iloc[-5:, -4:]).sum(axis=0), decimals=0)
-        BC_all_dict = dict(zip(["BC_all_" + d for d in data_index.columns[-4:]], BC_all))
-        BC_20_dict = dict(zip(["BC_20_" + d for d in data_index.columns[-4:]], BC_20))
-        BC_10_dict = dict(zip(["BC_10_" + d for d in data_index.columns[-4:]], BC_10))
-        BC_5_dict = dict(zip(["BC_5_" + d for d in data_index.columns[-4:]], BC_5))
-        summary.update(**BC_all_dict, **BC_20_dict, **BC_10_dict, **BC_5_dict)
+        BC_all = np.round(data_index.iloc[:, -5:].mean(axis=0)/1e6, decimals=3)
+        BC_20 = np.round(data_index.iloc[-20:, -5:].mean(axis=0)/1e6, decimals=3)
+        BC_10 = np.round(data_index.iloc[-10:, -5:].mean(axis=0)/1e6, decimals=3)
+        BC_5 = np.round(data_index.iloc[-5:, -5:].mean(axis=0)/1e6, decimals=3)
+        BC_weight = np.round((data_index['weight'].values.reshape(-1,1)*data_index.iloc[:, -5:]).sum(axis=0)/1e6, decimals=3)
+        BC_all_dict = dict(zip(["BC_all_" + d for d in data_index.columns[-5:]], BC_all))
+        BC_20_dict = dict(zip(["BC_20_" + d for d in data_index.columns[-5:]], BC_20))
+        BC_10_dict = dict(zip(["BC_10_" + d for d in data_index.columns[-5:]], BC_10))
+        BC_5_dict = dict(zip(["BC_5_" + d for d in data_index.columns[-5:]], BC_5))
+        BC_weight_dict = dict(zip(["BC_weight_" + d for d in data_index.columns[-5:]], BC_weight))
+        summary.update(**BC_all_dict, **BC_20_dict, **BC_10_dict, **BC_5_dict, **BC_weight_dict)
         slope = linregress(data_index.index, data_index['DAILY_RAIN'])[0]
         data_index['detrend'] = data_index['DAILY_RAIN'] - slope * data_index['year'] + slope * 2019
         data_index.loc[data_index['detrend'] < 0, 'detrend'] = 0
         summary.update({"slope": slope})
         for strike in strikes:
             data_index['payout_detrend_' + str(strike)] = data_index['detrend'].apply(lambda x: payout(x, strike))
-        BC_d_all = np.round((data_index['weight'].reshape(-1,1)*data_index.iloc[:, -4:]).sum(axis=0), decimals=0)
-        BC_d_20 = np.round((data_index['weight'].reshape(-1,1)[-20:]*data_index.iloc[-20:, -4:]).sum(axis=0), decimals=0)
-        BC_d_10 = np.round((data_index['weight'].reshape(-1,1)[-10:]*data_index.iloc[-10:, -4:]).sum(axis=0), decimals=0)
-        BC_d_5 = np.round((data_index['weight'].reshape(-1,1)[-5:]*data_index.iloc[-5:, -4:]).sum(axis=0), decimals=0)
-        BC_d_all_dict = dict(zip(["BC_detrend_all_" + d for d in data_index.columns[-4:]], BC_d_all))
-        BC_d_20_dict = dict(zip(["BC_detrend_20_" + d for d in data_index.columns[-4:]], BC_d_20))
-        BC_d_10_dict = dict(zip(["BC_detrend_10_" + d for d in data_index.columns[-4:]], BC_d_10))
-        BC_d_5_dict = dict(zip(["BC_detrend_5_" + d for d in data_index.columns[-4:]], BC_d_5))
-        summary.update(**BC_d_all_dict, **BC_d_20_dict, **BC_d_10_dict, **BC_d_5_dict)
+        BC_d_all = np.round(data_index.iloc[:, -5:].mean(axis=0)/1e6, decimals=3)
+        BC_d_20 = np.round(data_index.iloc[-20:, -5:].mean(axis=0)/1e6, decimals=3)
+        BC_d_10 = np.round(data_index.iloc[-10:, -5:].mean(axis=0)/1e6, decimals=3)
+        BC_d_5 = np.round(data_index.iloc[-5:, -5:].mean(axis=0)/1e6, decimals=3)
+        BC_d_weight = np.round((data_index['weight'].values.reshape(-1,1)*data_index.iloc[:, -5:]).sum(axis=0)/1e6, decimals=3)
+        BC_d_all_dict = dict(zip(["BC_detrend_all_" + d for d in data_index.columns[-5:]], BC_d_all))
+        BC_d_20_dict = dict(zip(["BC_detrend_20_" + d for d in data_index.columns[-5:]], BC_d_20))
+        BC_d_10_dict = dict(zip(["BC_detrend_10_" + d for d in data_index.columns[-5:]], BC_d_10))
+        BC_d_5_dict = dict(zip(["BC_detrend_5_" + d for d in data_index.columns[-5:]], BC_d_5))
+        BC_d_weight_dict = dict(zip(["BC_detrend_weight_" + d for d in data_index.columns[-5:]], BC_d_weight))
+        summary.update(**BC_d_all_dict, **BC_d_20_dict, **BC_d_10_dict, **BC_d_5_dict, **BC_d_weight_dict)
         data_index.rename(columns={"DAILY_RAIN": "untrended_index"}, inplace=True)
         c_name = summary["CITY"].replace(" ", "_").replace("(", "").replace(")", "").replace("'", "").replace("&", "")
         os.system("mkdir -p data/{}".format(c_name))

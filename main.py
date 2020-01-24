@@ -14,10 +14,7 @@ specials_variables = ["TYPE", "ratios", "missing_dates"]
 
 if __name__ == '__main__':
     beg = timer()
-    skip = False
-    with open("track.txt", "r") as t:
-        skip = "2100/2100" in t.read()
-    print(skip)
+    skip = bool(int(argv[1]))
     if not skip:
         with open("track.txt", "a") as tr:
             os.system("aws s3 cp s3://storage-underwriter/stations/ ./stations/ --recursive")
@@ -31,7 +28,7 @@ if __name__ == '__main__':
                 compt += 1
     else:
         pass
-    with open("track.txt", "a") as tr:
+    with open("tracks.txt", "a") as tr:
         dir_names = os.popen("ls data").read().split("\n")[:-1]
         f_names = ["data/{}/{}_summary.json".format(d, d) for d in dir_names]
         l_dict = list()
